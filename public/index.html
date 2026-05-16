@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Codex FIRST MVP</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Codex FIRST MVP</p>
+        <p class="lede">
+          This first pass focuses on Minnesota FRC autonomous scoring for the 2026 season and
+          answers the target question directly from public FIRST event results pages.
+        </p>
+      </section>
+
+      <section class="panel query-panel">
+        <label class="prompt" for="query">Question</label>
+        <textarea
+          id="query"
+          rows="4"
+          placeholder="Example: What is the highest 'auto' score in FIRST robotics competitions in Minnesota this year, 2026?"
+        ></textarea>
+        <div class="attachment-row">
+          <div class="archive-head">
+            <label class="archive-label" for="attachments">Attachments</label>
+            <span class="attachment-hint">Text, CSV, TSV, JSON, Markdown, or log files</span>
+          </div>
+          <input
+            id="attachments"
+            class="attachment-input"
+            type="file"
+            multiple
+            accept=".txt,.csv,.tsv,.json,.md,.markdown,.log,text/plain,text/csv,text/tab-separated-values,application/json"
+          />
+          <ul id="attachment-list" class="attachment-list hidden"></ul>
+        </div>
+        <div class="controls">
+          <button id="submit" type="button">Run query</button>
+          <span id="status" class="status">Ready.</span>
+        </div>
+        <div class="archive-row">
+          <div class="archive-head">
+            <label class="archive-label" for="history-select">Past questions</label>
+            <button id="clear-history" class="secondary-button" type="button">Clear questions</button>
+          </div>
+          <div class="archive-controls">
+            <select id="history-select" class="history-select">
+              <option value="">Choose a past question...</option>
+            </select>
+            <span id="history-empty" class="history-empty hidden">No archived questions yet.</span>
+            <a class="subtle-link" href="/">Clear view</a>
+          </div>
+        </div>
+        <section class="debug-panel" aria-live="polite">
+          <div class="debug-head">
+            <h2 class="debug-title">Debug</h2>
+            <span class="debug-caption">Current source or processing step</span>
+          </div>
+          <pre id="debug-log" class="debug-log">Ready.</pre>
+        </section>
+      </section>
+
+      <section id="result-panel" class="panel result-panel hidden">
+        <div class="result-head">
+          <h2>Answer</h2>
+          <span id="answer-badge" class="badge">GPT-5.4</span>
+        </div>
+        <p id="selected-question" class="selected-question"></p>
+        <div id="answer" class="answer"></div>
+
+        <div id="trace-wrap" class="sources hidden">
+          <div class="debug-head">
+            <h3>LLM Trace</h3>
+            <span class="debug-caption">Prompting, tool calls, and final payload</span>
+          </div>
+          <pre id="trace-log" class="trace-log">No trace available.</pre>
+        </div>
+
+        <div id="result" class="result-grid hidden">
+          <article class="metric-card">
+            <p id="metric-score-label" class="metric-label">Highest auto score</p>
+            <p id="highest-score" class="metric-value"></p>
+          </article>
+          <article class="metric-card">
+            <p class="metric-label">Match</p>
+            <p id="match-name" class="metric-detail"></p>
+          </article>
+          <article class="metric-card">
+            <p class="metric-label">Event</p>
+            <p id="event-name" class="metric-detail"></p>
+          </article>
+          <article class="metric-card">
+            <p class="metric-label">Alliance</p>
+            <p id="alliance" class="metric-detail"></p>
+          </article>
+        </div>
+
+        <div id="sources-wrap" class="sources hidden">
+          <h3>Sources</h3>
+          <ul id="sources"></ul>
+        </div>
+
+        <div id="leaderboard-wrap" class="sources hidden">
+          <h3 id="leaderboard-title">Top matches scanned</h3>
+          <div id="leaderboard"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
