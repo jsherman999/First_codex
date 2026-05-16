@@ -257,6 +257,14 @@ function getDisplayAnswerText(payload) {
       : `${result.divisionName} Division standings are not posted yet for ${result.season}.`;
   }
 
+  if (result.type === "team_event_matchup_epa") {
+    return `Showing ${result.totalMatchCount} ${result.eventName} matches for Team ${result.teamNumber}, with partner and opponent EPA match by match.`;
+  }
+
+  if (result.type === "event_rankings_with_epa") {
+    return `Showing the current ${result.eventName} rankings with ${result.season} EPA included.`;
+  }
+
   return payload.answer || "";
 }
 
@@ -283,6 +291,16 @@ function renderStructuredResult(result) {
 
   if (result.type === "championship_division_standings") {
     renderChampionshipDivisionStandings(result);
+    return;
+  }
+
+  if (result.type === "team_event_matchup_epa") {
+    renderTeamEventMatchupEpa(result);
+    return;
+  }
+
+  if (result.type === "event_rankings_with_epa") {
+    renderEventRankingsWithEpa(result);
     return;
   }
 
@@ -570,6 +588,193 @@ function renderChampionshipDivisionStandings(result) {
       towerCell,
       recordCell,
       playedCell,
+    );
+    body.append(row);
+  }
+
+  table.append(body);
+  leaderboardNode.append(table);
+  leaderboardWrapNode.classList.remove("hidden");
+}
+
+function renderTeamEventMatchupEpa(result) {
+  clearMetricCards();
+  resultNode.classList.add("hidden");
+  leaderboardNode.replaceChildren();
+  leaderboardTitleNode.textContent = `${result.teamName} matchups at ${result.eventName}`;
+
+  if (result.eventStatusMessage) {
+    const note = document.createElement("p");
+    note.className = "ranking-note";
+    note.textContent = result.eventStatusMessage;
+    leaderboardNode.append(note);
+  }
+
+  if (!Array.isArray(result.matches) || result.matches.length === 0) {
+    leaderboardWrapNode.classList.remove("hidden");
+    return;
+  }
+
+  const table = document.createElement("table");
+  table.className = "ranking-table matchup-table";
+
+  const head = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  ["Match", "Time", "Alliance", "Partners", "Opponents", "Score"].forEach((label) => {
+    const cell = document.createElement("th");
+    cell.scope = "col";
+    cell.textContent = label;
+    headRow.append(cell);
+  });
+  head.append(headRow);
+  table.append(head);
+
+  const body = document.createElement("tbody");
+
+  for (const match of result.matches) {
+    const row = document.createElement("tr");
+
+    const matchCell = document.createElement("td");
+    const matchLink = document.createElement("a");
+    matchLink.href = match.matchUrl || "#";
+    matchLink.target = "_blank";
+    matchLink.rel = "noreferrer";
+    matchLink.className = "ranking-link";
+    matchLink.textContent = match.matchLabel;
+    matchCell.append(matchLink);
+
+    const timeCell = document.createElement("td");
+    timeCell.textContent = match.startTimeLabel || "-";
+
+    const allianceCell = document.createElement("td");
+    const alliancePill = document.createElement("span");
+    alliancePill.className = `matchup-alliance matchup-alliance-${match.allianceColor || "neutral"}`;
+    alliancePill.textContent = `${capitalize(match.allianceColor || "scheduled")} with ${result.teamNumber}`;
+    allianceCell.append(alliancePill);
+
+    const partnersCell = document.createElement("td");
+    partnersCell.append(buildMatchupTeamList(match.partnerTeams || []));
+
+    const opponentsCell = document.createElement("td");
+    opponentsCell.append(buildMatchupTeamList(match.opponentTeams || []));
+
+    const scoreCell = document.createElement("td");
+    scoreCell.className = "ranking-points";
+    scoreCell.textContent =
+      Number.isFinite(match.targetTeamScore) && Number.isFinite(match.opponentScore)
+        ? `${match.targetTeamScore} - ${match.opponentScore}`
+        : "Scheduled";
+
+    row.append(matchCell, timeCell, allianceCell, partnersCell, opponentsCell, scoreCell);
+    body.append(row);
+  }
+
+  table.append(body);
+  leaderboardNode.append(table);
+  leaderboardWrapNode.classList.remove("hidden");
+}
+
+function renderEventRankingsWithEpa(result) {
+  clearMetricCards();
+  resultNode.classList.add("hidden");
+  leaderboardNode.replaceChildren();
+  leaderboardTitleNode.textContent = `${result.eventName} rankings with EPA`;
+
+  if (result.eventStatusMessage) {
+    const note = document.createElement("p");
+    note.className = "ranking-note";
+    note.textContent = result.eventStatusMessage;
+    leaderboardNode.append(note);
+  }
+
+  if (!Array.isArray(result.teams) || result.teams.length === 0) {
+    leaderboardWrapNode.classList.remove("hidden");
+    return;
+  }
+
+  const table = document.createElement("table");
+  table.className = "ranking-table";
+
+  const head = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  [
+    "Rank",
+    "Team",
+    "Ranking Score",
+    "Match",
+    "Auto Fuel",
+    "Tower",
+    "W-L-T",
+    "Played",
+    "EPA",
+    "Auto",
+    "Teleop",
+    "Endgame",
+  ].forEach((label) => {
+    const cell = document.createElement("th");
+    cell.scope = "col";
+    cell.textContent = label;
+    headRow.append(cell);
+  });
+  head.append(headRow);
+  table.append(head);
+
+  const body = document.createElement("tbody");
+  for (const team of result.teams) {
+    const row = document.createElement("tr");
+
+    const rankCell = document.createElement("td");
+    rankCell.className = "ranking-rank";
+    rankCell.textContent = `#${team.rank}`;
+
+    const teamCell = document.createElement("td");
+    teamCell.append(buildTeamCellContent(team));
+
+    const rankingScoreCell = document.createElement("td");
+    rankingScoreCell.className = "ranking-points";
+    rankingScoreCell.textContent = formatRankingStat(team.rankingScore);
+
+    const matchCell = document.createElement("td");
+    matchCell.textContent = formatRankingStat(team.matchScore);
+
+    const autoFuelCell = document.createElement("td");
+    autoFuelCell.textContent = formatRankingStat(team.autoFuel);
+
+    const towerCell = document.createElement("td");
+    towerCell.textContent = formatRankingStat(team.tower);
+
+    const recordCell = document.createElement("td");
+    recordCell.textContent = team.record || "-";
+
+    const playedCell = document.createElement("td");
+    playedCell.textContent = Number.isFinite(team.matchesPlayed) ? String(team.matchesPlayed) : "-";
+
+    const epaCell = document.createElement("td");
+    epaCell.className = "ranking-points";
+    epaCell.textContent = formatNumericStat(team.epa);
+
+    const autoEpaCell = document.createElement("td");
+    autoEpaCell.textContent = formatNumericStat(team.autoEpa);
+
+    const teleopCell = document.createElement("td");
+    teleopCell.textContent = formatNumericStat(team.teleopEpa);
+
+    const endgameCell = document.createElement("td");
+    endgameCell.textContent = formatNumericStat(team.endgameEpa);
+
+    row.append(
+      rankCell,
+      teamCell,
+      rankingScoreCell,
+      matchCell,
+      autoFuelCell,
+      towerCell,
+      recordCell,
+      playedCell,
+      epaCell,
+      autoEpaCell,
+      teleopCell,
+      endgameCell,
     );
     body.append(row);
   }
@@ -1147,6 +1352,48 @@ function buildTeamCellContent(team) {
 
   wrap.append(avatar, textWrap);
   return wrap;
+}
+
+function buildMatchupTeamList(teams) {
+  const list = document.createElement("div");
+  list.className = "matchup-team-list";
+
+  for (const team of teams) {
+    const item = document.createElement("div");
+    item.className = "matchup-team";
+
+    const avatar = createTeamAvatar(team, "team-avatar matchup-team-avatar");
+
+    const textWrap = document.createElement("div");
+    textWrap.className = "matchup-team-copy";
+
+    const topLine = document.createElement("div");
+    topLine.className = "matchup-team-topline";
+
+    const link = document.createElement("a");
+    link.href = team.blueAllianceUrl;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.className = "ranking-link";
+    link.textContent = `Team ${team.teamNumber}`;
+    link.title = buildTeamTooltip(team);
+
+    const epa = document.createElement("span");
+    epa.className = "matchup-team-epa";
+    epa.textContent = `EPA ${formatNumericStat(team.epa)}`;
+
+    topLine.append(link, epa);
+
+    const name = document.createElement("div");
+    name.className = "ranking-team-meta";
+    name.textContent = team.teamName;
+
+    textWrap.append(topLine, name);
+    item.append(avatar, textWrap);
+    list.append(item);
+  }
+
+  return list;
 }
 
 function buildTeamTooltip(team) {

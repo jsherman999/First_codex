@@ -429,6 +429,75 @@ button:disabled {
   color: var(--text-strong);
 }
 
+.matchup-table td {
+  vertical-align: top;
+}
+
+.matchup-alliance {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.28rem 0.58rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.matchup-alliance-red {
+  background: rgba(188, 45, 45, 0.14);
+  color: #8d1f1f;
+}
+
+.matchup-alliance-blue {
+  background: rgba(42, 107, 191, 0.14);
+  color: #184f99;
+}
+
+.matchup-alliance-neutral {
+  background: rgba(16, 34, 51, 0.08);
+  color: var(--text-soft);
+}
+
+.matchup-team-list {
+  display: grid;
+  gap: 0.7rem;
+  min-width: 15rem;
+}
+
+.matchup-team {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
+.matchup-team-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 10px;
+}
+
+.matchup-team-copy {
+  min-width: 0;
+}
+
+.matchup-team-topline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.matchup-team-epa {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(53, 155, 94, 0.12);
+  color: #19653a;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
 .ranking-table {
   width: 100%;
   border-collapse: collapse;

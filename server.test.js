@@ -8,6 +8,8 @@ const {
   buildChampionshipDivisionEpaAnswer,
   buildChampionshipDivisionStandingsAnswer,
   buildEpaRankingsAnswer,
+  buildEventRankingsWithEpaAnswer,
+  buildTeamEventMatchupEpaAnswer,
   buildTeamChampionshipAnswer,
   buildRegionalEventAnswer,
   buildRegionalRankingsAnswer,
@@ -20,11 +22,14 @@ const {
   extractChampionshipDivisionStandingsRequest,
   extractChampionshipStandingsRowsFromHtml,
   extractEpaRankingRequest,
+  extractEventRankingsWithEpaRequest,
   extractFirstChampionshipTeamQuery,
   extractMetricQuery,
   extractRegionalPointsTeamQuery,
   extractEventTeamDirectory,
   extractStandingsStatusMessage,
+  extractTeamEventMatchRows,
+  extractTeamEventMatchupEpaRequest,
   extractTeamQueriesFromAttachmentText,
   extractTeamLookupName,
   extractScoreBreakdown,
@@ -107,6 +112,31 @@ test("extractChampionshipDivisionStandingsRequest recognizes Curie standings que
       divisionCode: "CURIE",
       divisionName: "Curie",
       limit: 20,
+    },
+  );
+});
+
+test("extractTeamEventMatchupEpaRequest recognizes Minnesota state matchup EPA questions", () => {
+  assert.deepEqual(
+    extractTeamEventMatchupEpaRequest(
+      "Show the EPA of 7028's partners and opponents in the Minnesota state championship, match by match.",
+    ),
+    {
+      teamQuery: "7028",
+      eventCode: "MNST",
+      eventName: "Minnesota State High School League Championship",
+    },
+  );
+});
+
+test("extractEventRankingsWithEpaRequest recognizes Minnesota state rankings with EPA questions", () => {
+  assert.deepEqual(
+    extractEventRankingsWithEpaRequest(
+      "Here are the current rankings in the minnesota state high school league championship. create a table showing the same data with their 2026 EPA included.",
+    ),
+    {
+      eventCode: "MNST",
+      eventName: "Minnesota State High School League Championship",
     },
   );
 });
@@ -227,6 +257,53 @@ test("buildChampionshipDivisionStandingsAnswer summarizes pre-event standings", 
   assert.match(answer, /standings for 2026 are not posted yet/);
   assert.match(answer, /April 29, 2026/);
   assert.match(answer, /Competing teams currently listed: 75/);
+});
+
+test("buildTeamEventMatchupEpaAnswer summarizes team event matchup EPA results", () => {
+  const answer = buildTeamEventMatchupEpaAnswer({
+    totalMatchCount: 2,
+    eventName: "Minnesota State High School League Championship",
+    season: 2026,
+    teamNumber: "7028",
+    teamName: "Binary Battalion",
+    eventStatusMessage: "This event is in progress.",
+    matches: [
+      {
+        matchLabel: "Qualification 1",
+        partnerTeams: [
+          { teamNumber: "2472", epa: 100.2 },
+          { teamNumber: "2846", epa: 95.1 },
+        ],
+        opponentTeams: [
+          { teamNumber: "3276", epa: 126.3 },
+          { teamNumber: "7797", epa: 84.2 },
+          { teamNumber: "3100", epa: 124.0 },
+        ],
+      },
+    ],
+  });
+
+  assert.match(answer, /Showing 2 Minnesota State High School League Championship matches/);
+  assert.match(answer, /This event is in progress/);
+  assert.match(answer, /Qualification 1: partners 2472 \(100.20\), 2846 \(95.10\); opponents 3276 \(126.30\)/);
+});
+
+test("buildEventRankingsWithEpaAnswer summarizes event rankings with EPA", () => {
+  const answer = buildEventRankingsWithEpaAnswer({
+    eventName: "Minnesota State High School League Championship",
+    season: 2026,
+    eventStatusMessage: "This event is in progress.",
+    returnedCount: 36,
+    teams: [
+      { rank: 1, teamNumber: "2052", teamName: "KnightKrawler", rankingScore: 4.8, epa: 184.74 },
+      { rank: 2, teamNumber: "2491", teamName: "NoMythic", rankingScore: 4.2, epa: 176.73 },
+    ],
+  });
+
+  assert.match(answer, /current rankings with 2026 EPA included/);
+  assert.match(answer, /This event is in progress/);
+  assert.match(answer, /#1 2052 KnightKrawler \(RS 4.80, EPA 184.74\)/);
+  assert.match(answer, /Returned 36 ranked teams/);
 });
 
 test("buildAttachedTeamEpaRankingsAnswer summarizes uploaded-team EPA results", () => {
@@ -361,6 +438,47 @@ test("extractChampionshipStandingsRowsFromHtml parses a populated ranking row", 
     tower: 3.89,
     record: "8 - 1 - 0",
     matchesPlayed: 9,
+  });
+});
+
+test("extractTeamEventMatchRows parses team-filtered event rows into partners and opponents", () => {
+  const html = `
+    <table id="matches">
+      <tbody>
+        <tr>
+          <td><a href="/2026/MNST/qualifications/1">Qualification 1</a></td>
+          <td>Sat 5/16 - 8:36 AM</td>
+          <td><a href="/2026/team/3276">3276</a></td>
+          <td><a href="/2026/team/7797">7797</a></td>
+          <td><a href="/2026/team/3100">3100</a></td>
+          <td><a href="/2026/team/2472">2472</a></td>
+          <td><a href="/2026/team/2846">2846</a></td>
+          <td><b><a href="/2026/team/7028">7028</a></b></td>
+          <td>329</td>
+          <td>396</td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+
+  const parsed = extractTeamEventMatchRows(html, "7028", "qualification");
+
+  assert.equal(parsed.rows.length, 1);
+  assert.deepEqual(parsed.rows[0], {
+    id: "qualification-1",
+    stage: "qualification",
+    matchLabel: "Qualification 1",
+    startTimeLabel: "Sat 5/16 - 8:36 AM",
+    redTeamNumbers: ["3276", "7797", "3100"],
+    blueTeamNumbers: ["2472", "2846", "7028"],
+    allianceColor: "blue",
+    partnerTeamNumbers: ["2472", "2846"],
+    opponentTeamNumbers: ["3276", "7797", "3100"],
+    redScore: 329,
+    blueScore: 396,
+    targetTeamScore: 396,
+    opponentScore: 329,
+    matchUrl: "https://frc-events.firstinspires.org/2026/MNST/qualifications/1",
   });
 });
 

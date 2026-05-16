@@ -99,6 +99,12 @@ const CHAMPIONSHIP_DIVISIONS = [
   { code: "MILSTEIN", name: "Milstein" },
   { code: "NEWTON", name: "Newton" },
 ];
+const SPECIAL_EVENT_ALIASES = [
+  {
+    code: "MNST",
+    name: "Minnesota State High School League Championship",
+  },
+];
 const US_STATE_ALIASES = new Map([
   ["alabama", "AL"],
   ["alaska", "AK"],
@@ -375,6 +381,8 @@ async function answerQuestion(question, options = {}) {
   const attachments = summarizeAttachmentContext(options.attachmentContext);
   const directRegionalPointsTeamQuery = extractRegionalPointsTeamQuery(question);
   const directFirstChampionshipTeamQuery = extractFirstChampionshipTeamQuery(question);
+  const directTeamEventMatchupEpaRequest = extractTeamEventMatchupEpaRequest(question);
+  const directEventRankingsWithEpaRequest = extractEventRankingsWithEpaRequest(question);
   const directChampionshipDivisionEpaRequest = extractChampionshipDivisionEpaRequest(question);
   const directChampionshipDivisionStandingsRequest =
     extractChampionshipDivisionStandingsRequest(question);
@@ -462,6 +470,83 @@ async function answerQuestion(question, options = {}) {
       question,
       route: "team_first_championship",
       detail: `Detected "${directFirstChampionshipTeamQuery}" as a specific-team FIRST Championship question.`,
+      attachments,
+      finalPayload: response,
+    });
+    return response;
+  }
+
+  if (directTeamEventMatchupEpaRequest) {
+    onProgress({
+      message: `Detected a team matchup EPA query for ${directTeamEventMatchupEpaRequest.teamQuery} at ${directTeamEventMatchupEpaRequest.eventCode}.`,
+      source: null,
+    });
+    onProgress({
+      message: "Routing directly to the official FIRST team-filtered event schedule and Statbotics EPA data.",
+      source: `${FIRST_BASE_URL}/${directTeamEventMatchupEpaRequest.eventCode}`,
+    });
+
+    const result = await getTeamEventMatchupEpa2026(
+      {
+        teamQuery: directTeamEventMatchupEpaRequest.teamQuery,
+        eventCode: directTeamEventMatchupEpaRequest.eventCode,
+      },
+      { onProgress },
+    );
+
+    const response = {
+      supported: result.supported !== false,
+      intent: "team_event_matchup_epa",
+      question,
+      answer: result.answer || buildTeamEventMatchupEpaAnswer(result),
+      sources: sanitizeSourceList(result.sources || []),
+      result: result.supported === false ? null : result,
+      examples: getSupportedExamples(),
+      model: OPENAI_MODEL,
+      attachments,
+    };
+    response.llmTrace = buildBypassTrace({
+      question,
+      route: "team_event_matchup_epa",
+      detail: `Detected a team-event partner/opponent EPA request for ${directTeamEventMatchupEpaRequest.teamQuery} at ${directTeamEventMatchupEpaRequest.eventCode}.`,
+      attachments,
+      finalPayload: response,
+    });
+    return response;
+  }
+
+  if (directEventRankingsWithEpaRequest) {
+    onProgress({
+      message: `Detected an event rankings plus EPA query for ${directEventRankingsWithEpaRequest.eventCode}.`,
+      source: null,
+    });
+    onProgress({
+      message: "Routing directly to the official FIRST event rankings plus Statbotics EPA data.",
+      source: `${FIRST_BASE_URL}/${directEventRankingsWithEpaRequest.eventCode}/rankings`,
+    });
+
+    const result = await getEventRankingsWithEpa2026(
+      {
+        eventCode: directEventRankingsWithEpaRequest.eventCode,
+      },
+      { onProgress },
+    );
+
+    const response = {
+      supported: result.supported !== false,
+      intent: "event_rankings_with_epa",
+      question,
+      answer: result.answer || buildEventRankingsWithEpaAnswer(result),
+      sources: sanitizeSourceList(result.sources || []),
+      result: result.supported === false ? null : result,
+      examples: getSupportedExamples(),
+      model: OPENAI_MODEL,
+      attachments,
+    };
+    response.llmTrace = buildBypassTrace({
+      question,
+      route: "event_rankings_with_epa",
+      detail: `Detected an event rankings with EPA request for ${directEventRankingsWithEpaRequest.eventCode}.`,
       attachments,
       finalPayload: response,
     });
@@ -792,6 +877,7 @@ function getSupportedExamples() {
     "Which Minnesota teams have the best EPA in 2026?",
     "Sort all the teams in the Curie division this year by EPA.",
     "Give me a snapshot of the current Curie division standings.",
+    "Show the EPA of 7028's partners and opponents in the Minnesota state championship, match by match.",
     "Sort the attached list of teams by EPA.",
     "What is the team number for Iron Mosquitos?",
     "Is Iron Mosquitos going to worlds?",
@@ -1427,14 +1513,16 @@ function buildSystemPrompt(attachmentContext = null) {
     "8. For specific-team questions, use Statbotics as one of the lookup sources when available.",
     "9. If the question asks for EPA rankings, best EPA teams, or teams sorted by EPA, call get_epa_rankings_2026 first.",
     "10. If the question asks for a FIRST Championship division such as Curie, Hopper, or Newton and wants those teams sorted by EPA, call get_championship_division_epa_rankings_2026 first.",
-    "11. If the question asks for a FIRST Championship division standings snapshot, call get_championship_division_standings_2026 first.",
-    "12. If the question refers to attached teams or an attached team list and asks for EPA sorting or ranking, call get_attached_team_epa_rankings_2026 first.",
-    "13. Use web_search if needed for discovery, preferably with site: filters targeting the allowed robotics domains.",
-    "14. Use fetch_allowed_url to inspect specific pages only when a dedicated tool is not available.",
-    "15. Use get_minnesota_auto_max_2026 if the question is about the highest autonomous score in Minnesota for 2026.",
-    '16. If the question asks for the highest Minnesota score in 2026 for a score category like "tower", "teleop", "foul", or "auto", call get_minnesota_score_max_2026 with that category text.',
-    "17. Once a dedicated tool gives enough evidence, stop researching and call return_answer immediately.",
-    "18. If you cannot fully answer the question, still call return_answer with supported=false instead of continuing to loop.",
+    "11. If the question asks for a team's partners or opponents at a specific event and wants their EPA match by match, call get_team_event_matchup_epa_2026 first.",
+    "12. If the question asks for current event rankings or standings with EPA included for a specific event, call get_event_rankings_with_epa_2026 first.",
+    "13. If the question asks for a FIRST Championship division standings snapshot, call get_championship_division_standings_2026 first.",
+    "14. If the question refers to attached teams or an attached team list and asks for EPA sorting or ranking, call get_attached_team_epa_rankings_2026 first.",
+    "15. Use web_search if needed for discovery, preferably with site: filters targeting the allowed robotics domains.",
+    "16. Use fetch_allowed_url to inspect specific pages only when a dedicated tool is not available.",
+    "17. Use get_minnesota_auto_max_2026 if the question is about the highest autonomous score in Minnesota for 2026.",
+    '18. If the question asks for the highest Minnesota score in 2026 for a score category like "tower", "teleop", "foul", or "auto", call get_minnesota_score_max_2026 with that category text.',
+    "19. Once a dedicated tool gives enough evidence, stop researching and call return_answer immediately.",
+    "20. If you cannot fully answer the question, still call return_answer with supported=false instead of continuing to loop.",
     "Requirements for return_answer:",
     "- answer: concise but complete.",
     "- sources: array of objects with label and url.",
@@ -1674,6 +1762,43 @@ function getOpenAITools() {
     },
     {
       type: "function",
+      name: "get_team_event_matchup_epa_2026",
+      description:
+        "Get one team's partners and opponents, match by match, for a specific 2026 event, enriched with current Statbotics EPA values.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          team_query: {
+            type: "string",
+          },
+          event_code: {
+            type: "string",
+            description: "FIRST event code, such as MNST.",
+          },
+        },
+        required: ["team_query", "event_code"],
+      },
+    },
+    {
+      type: "function",
+      name: "get_event_rankings_with_epa_2026",
+      description:
+        "Get the current rankings table for a specific 2026 event, enriched with current Statbotics EPA values for each team.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          event_code: {
+            type: "string",
+            description: "FIRST event code, such as MNST.",
+          },
+        },
+        required: ["event_code"],
+      },
+    },
+    {
+      type: "function",
       name: "get_attached_team_epa_rankings_2026",
       description:
         "Sort the uploaded team list by 2026 Statbotics EPA, using the team numbers or names extracted from the attached files.",
@@ -1876,6 +2001,41 @@ async function runAgentTool(name, args, options = {}) {
       answer:
         result.answer ||
         (result.supported === false ? "" : buildChampionshipDivisionStandingsAnswer(result)),
+      structuredResult: result.supported === false ? null : result,
+      sources: result.sources,
+    };
+  }
+
+  if (name === "get_team_event_matchup_epa_2026") {
+    const result = await getTeamEventMatchupEpa2026(
+      {
+        teamQuery: args.team_query,
+        eventCode: args.event_code,
+      },
+      { onProgress },
+    );
+    return {
+      supported: result.supported !== false,
+      answer:
+        result.answer ||
+        (result.supported === false ? "" : buildTeamEventMatchupEpaAnswer(result)),
+      structuredResult: result.supported === false ? null : result,
+      sources: result.sources,
+    };
+  }
+
+  if (name === "get_event_rankings_with_epa_2026") {
+    const result = await getEventRankingsWithEpa2026(
+      {
+        eventCode: args.event_code,
+      },
+      { onProgress },
+    );
+    return {
+      supported: result.supported !== false,
+      answer:
+        result.answer ||
+        (result.supported === false ? "" : buildEventRankingsWithEpaAnswer(result)),
       structuredResult: result.supported === false ? null : result,
       sources: result.sources,
     };
@@ -3230,6 +3390,354 @@ async function getRegionalEventPoints2026(input = {}, options = {}) {
   };
 }
 
+function extractEventPageSummary(html, fallbackName = "") {
+  const $ = cheerio.load(html);
+  const eventName =
+    normalizeText($("h1").first().text())
+      .replace(/^2026 Event Information -\s*/i, "")
+      .replace(/^2026 Rankings -\s*/i, "") ||
+    normalizeText($("title").first().text()).split(" FRC Event Web")[0] ||
+    fallbackName;
+  const eventStatusMessage =
+    $(".alert-warning, .alert-info")
+      .map((_, node) => normalizeText($(node).text()))
+      .get()
+      .find(
+        (text) =>
+          text &&
+          !/small screen/i.test(text) &&
+          !/heads up/i.test(text) &&
+          (/in progress/i.test(text) || /not yet started/i.test(text) || /results will/i.test(text)),
+      ) || null;
+
+  return {
+    eventName,
+    eventStatusMessage,
+  };
+}
+
+function extractTeamEventMatchRows(html, targetTeamNumber, stage) {
+  const $ = cheerio.load(html);
+  const rows = [];
+  const normalizedTarget = String(targetTeamNumber);
+  const noMatchesMessage =
+    $(".alert-info, .alert-warning")
+      .map((_, node) => normalizeText($(node).text()))
+      .get()
+      .find((text) => /did not participate|no matches yet|there were not any/i.test(text)) || null;
+
+  $("#matches tbody tr").each((index, rowNode) => {
+    const cells = $(rowNode).find("td");
+    if (cells.length < 8) {
+      return;
+    }
+
+    const matchLink = $(cells[0]).find("a").first();
+    const matchLabel = normalizeText($(cells[0]).text());
+    const startTimeLabel = normalizeText($(cells[1]).text()) || null;
+    const redTeamNumbers = [2, 3, 4]
+      .map((cellIndex) => normalizeText($(cells[cellIndex]).find("a").first().text()))
+      .filter(Boolean);
+    const blueTeamNumbers = [5, 6, 7]
+      .map((cellIndex) => normalizeText($(cells[cellIndex]).find("a").first().text()))
+      .filter(Boolean);
+    const redScore =
+      cells.length > 8 && normalizeText($(cells[8]).text())
+        ? parseScoreValue($(cells[8]).text())
+        : Number.NaN;
+    const blueScore =
+      cells.length > 9 && normalizeText($(cells[9]).text())
+        ? parseScoreValue($(cells[9]).text())
+        : Number.NaN;
+    const allianceColor = redTeamNumbers.includes(normalizedTarget)
+      ? "red"
+      : blueTeamNumbers.includes(normalizedTarget)
+        ? "blue"
+        : null;
+
+    if (!allianceColor) {
+      return;
+    }
+
+    const partnerTeamNumbers =
+      allianceColor === "red"
+        ? redTeamNumbers.filter((teamNumber) => teamNumber !== normalizedTarget)
+        : blueTeamNumbers.filter((teamNumber) => teamNumber !== normalizedTarget);
+    const opponentTeamNumbers = allianceColor === "red" ? blueTeamNumbers : redTeamNumbers;
+    const matchHref = matchLink.attr("href");
+
+    rows.push({
+      id: `${stage}-${index + 1}`,
+      stage,
+      matchLabel,
+      startTimeLabel,
+      redTeamNumbers,
+      blueTeamNumbers,
+      allianceColor,
+      partnerTeamNumbers,
+      opponentTeamNumbers,
+      redScore: Number.isFinite(redScore) ? redScore : null,
+      blueScore: Number.isFinite(blueScore) ? blueScore : null,
+      targetTeamScore:
+        allianceColor === "red"
+          ? Number.isFinite(redScore)
+            ? redScore
+            : null
+          : Number.isFinite(blueScore)
+            ? blueScore
+            : null,
+      opponentScore:
+        allianceColor === "red"
+          ? Number.isFinite(blueScore)
+            ? blueScore
+            : null
+          : Number.isFinite(redScore)
+            ? redScore
+            : null,
+      matchUrl: matchHref
+        ? `https://frc-events.firstinspires.org${matchHref}`
+        : null,
+    });
+  });
+
+  return {
+    rows,
+    noMatchesMessage,
+  };
+}
+
+function buildTeamSeasonEpaDetail(teamNumber, teamDetail, statboticsTeamYear) {
+  const epaBreakdown = statboticsTeamYear?.epa?.breakdown || {};
+  return {
+    teamNumber: String(teamNumber),
+    teamName: teamDetail?.name || `Team ${teamNumber}`,
+    location: teamDetail?.location || "Location unavailable",
+    avatarUrl: teamDetail?.avatarUrl || DEFAULT_TEAM_AVATAR_URL,
+    firstTeamUrl:
+      teamDetail?.firstTeamUrl || `https://frc-events.firstinspires.org/${CURRENT_SEASON}/team/${teamNumber}`,
+    blueAllianceUrl: teamDetail?.blueAllianceUrl || `https://www.thebluealliance.com/team/${teamNumber}`,
+    epa: Number(epaBreakdown.total_points ?? statboticsTeamYear?.epa?.total_points?.mean ?? Number.NaN),
+    autoEpa: Number(epaBreakdown.auto_points ?? Number.NaN),
+    teleopEpa: Number(epaBreakdown.teleop_points ?? Number.NaN),
+    endgameEpa: Number(epaBreakdown.endgame_points ?? Number.NaN),
+  };
+}
+
+async function getTeamEventMatchupEpa2026(input = {}, options = {}) {
+  const onProgress = options.onProgress || (() => {});
+  const eventCode = normalizeText(String(input.eventCode || "")).toUpperCase();
+
+  if (!eventCode) {
+    throw new Error("Missing event code for team matchup EPA lookup.");
+  }
+
+  const resolvedTeam = await resolveTeamQuery2026(
+    {
+      query: input.teamQuery,
+    },
+    { onProgress },
+  );
+  if (resolvedTeam.supported === false) {
+    return resolvedTeam;
+  }
+
+  onProgress({
+    message: `Loading ${eventCode} event details for Team ${resolvedTeam.teamNumber}.`,
+    source: `${FIRST_BASE_URL}/${eventCode}`,
+  });
+
+  const [eventHtml, qualificationHtml, playoffHtml, allTeams] = await Promise.all([
+    fetchText(`${FIRST_BASE_URL}/${eventCode}`),
+    fetchText(`${FIRST_BASE_URL}/${eventCode}/qualifications?team=${resolvedTeam.teamNumber}`),
+    fetchText(`${FIRST_BASE_URL}/${eventCode}/playoffs?team=${resolvedTeam.teamNumber}`),
+    getAllTeamsDirectory2026({ onProgress }),
+  ]);
+
+  const eventSummary = extractEventPageSummary(eventHtml, eventCode);
+  const qualificationRows = extractTeamEventMatchRows(
+    qualificationHtml,
+    resolvedTeam.teamNumber,
+    "qualification",
+  );
+  const playoffRows = extractTeamEventMatchRows(playoffHtml, resolvedTeam.teamNumber, "playoff");
+  const rawMatches = [...qualificationRows.rows, ...playoffRows.rows];
+  const allTeamsDirectory = indexTeamsByNumber(allTeams);
+
+  const relatedTeamNumbers = dedupeStrings(
+    rawMatches.flatMap((match) => [...match.partnerTeamNumbers, ...match.opponentTeamNumbers]),
+  );
+  const relatedTeamDetails = new Map();
+
+  await mapLimit(relatedTeamNumbers, 8, async (teamNumber) => {
+    const knownTeam = allTeamsDirectory.get(String(teamNumber)) || buildFallbackTeamDetail(teamNumber);
+    let statboticsTeamYear = null;
+    try {
+      statboticsTeamYear = await getStatboticsTeamYear(teamNumber, CURRENT_SEASON, { onProgress });
+    } catch {
+      statboticsTeamYear = null;
+    }
+
+    relatedTeamDetails.set(
+      String(teamNumber),
+      buildTeamSeasonEpaDetail(teamNumber, knownTeam, statboticsTeamYear),
+    );
+  });
+
+  let targetTeamSeason = null;
+  try {
+    targetTeamSeason = await getStatboticsTeamYear(resolvedTeam.teamNumber, CURRENT_SEASON, { onProgress });
+  } catch {
+    targetTeamSeason = null;
+  }
+
+  const targetTeamDetail = buildTeamSeasonEpaDetail(
+    resolvedTeam.teamNumber,
+    {
+      name: resolvedTeam.teamName,
+      location: resolvedTeam.location,
+      avatarUrl: resolvedTeam.avatarUrl,
+      firstTeamUrl: resolvedTeam.firstTeamUrl,
+      blueAllianceUrl: resolvedTeam.blueAllianceUrl,
+    },
+    targetTeamSeason,
+  );
+
+  const matches = rawMatches.map((match) => ({
+    ...match,
+    partnerTeams: match.partnerTeamNumbers.map(
+      (teamNumber) => relatedTeamDetails.get(String(teamNumber)) || buildFallbackTeamDetail(teamNumber),
+    ),
+    opponentTeams: match.opponentTeamNumbers.map(
+      (teamNumber) => relatedTeamDetails.get(String(teamNumber)) || buildFallbackTeamDetail(teamNumber),
+    ),
+  }));
+
+  return {
+    type: "team_event_matchup_epa",
+    season: CURRENT_SEASON,
+    eventCode,
+    eventName: eventSummary.eventName || eventCode,
+    eventStatusMessage: eventSummary.eventStatusMessage,
+    teamNumber: resolvedTeam.teamNumber,
+    teamName: resolvedTeam.teamName,
+    team: targetTeamDetail,
+    qualificationMatchCount: qualificationRows.rows.length,
+    playoffMatchCount: playoffRows.rows.length,
+    totalMatchCount: matches.length,
+    matches,
+    sources: mergeSourceLists(resolvedTeam.sources, [
+      {
+        label: `${eventSummary.eventName || eventCode} event page`,
+        url: `${FIRST_BASE_URL}/${eventCode}`,
+      },
+      {
+        label: `${eventSummary.eventName || eventCode} team-filtered qualifications`,
+        url: `${FIRST_BASE_URL}/${eventCode}/qualifications?team=${resolvedTeam.teamNumber}`,
+      },
+      {
+        label: `${eventSummary.eventName || eventCode} team-filtered playoffs`,
+        url: `${FIRST_BASE_URL}/${eventCode}/playoffs?team=${resolvedTeam.teamNumber}`,
+      },
+      {
+        label: `${CURRENT_SEASON} Statbotics EPA rankings`,
+        url: "https://www.statbotics.io/teams",
+      },
+    ]),
+    answer:
+      matches.length === 0
+        ? `${resolvedTeam.teamName} (Team ${resolvedTeam.teamNumber}) do not have any published matches yet for ${eventSummary.eventName || eventCode}.`
+        : null,
+  };
+}
+
+async function getEventRankingsWithEpa2026(input = {}, options = {}) {
+  const onProgress = options.onProgress || (() => {});
+  const eventCode = normalizeText(String(input.eventCode || "")).toUpperCase();
+
+  if (!eventCode) {
+    throw new Error("Missing event code for event rankings with EPA lookup.");
+  }
+
+  onProgress({
+    message: `Loading ${eventCode} event rankings.`,
+    source: `${FIRST_BASE_URL}/${eventCode}/rankings`,
+  });
+
+  const [rankingRows, eventHtml, allTeams] = await Promise.all([
+    loadEventRankingsByEventCode2026(eventCode, { onProgress }),
+    fetchText(`${FIRST_BASE_URL}/${eventCode}/rankings`),
+    getAllTeamsDirectory2026({ onProgress }),
+  ]);
+
+  const allTeamsDirectory = indexTeamsByNumber(allTeams);
+  const eventSummary = extractEventPageSummary(eventHtml, eventCode);
+
+  const teams = (
+    await mapLimit(rankingRows, 8, async (row, index) => {
+      const teamNumber = String(row.teamNumber || "").trim();
+      if (!teamNumber) {
+        return null;
+      }
+
+      const knownTeam = allTeamsDirectory.get(teamNumber) || buildFallbackTeamDetail(teamNumber);
+      let statboticsTeamYear = null;
+      try {
+        statboticsTeamYear = await getStatboticsTeamYear(teamNumber, CURRENT_SEASON, { onProgress });
+      } catch {
+        statboticsTeamYear = null;
+      }
+
+      const seasonEpa = buildTeamSeasonEpaDetail(teamNumber, knownTeam, statboticsTeamYear);
+      return {
+        rank: Number(row.rank) || index + 1,
+        teamNumber,
+        teamName: seasonEpa.teamName,
+        location: seasonEpa.location,
+        avatarUrl: seasonEpa.avatarUrl,
+        firstTeamUrl: seasonEpa.firstTeamUrl,
+        blueAllianceUrl: seasonEpa.blueAllianceUrl,
+        rankingScore: Number(row.sortOrder1),
+        matchScore: Number(row.sortOrder2),
+        autoFuel: Number(row.sortOrder3),
+        tower: Number(row.sortOrder4),
+        record: [row.wins, row.losses, row.ties].every(Number.isFinite)
+          ? `${row.wins} - ${row.losses} - ${row.ties}`
+          : null,
+        matchesPlayed: Number.isFinite(Number(row.matchesPlayed)) ? Number(row.matchesPlayed) : null,
+        epa: seasonEpa.epa,
+        autoEpa: seasonEpa.autoEpa,
+        teleopEpa: seasonEpa.teleopEpa,
+        endgameEpa: seasonEpa.endgameEpa,
+      };
+    })
+  ).filter(Boolean);
+
+  return {
+    type: "event_rankings_with_epa",
+    season: CURRENT_SEASON,
+    eventCode,
+    eventName: eventSummary.eventName || eventCode,
+    eventStatusMessage: eventSummary.eventStatusMessage,
+    totalRankedTeams: teams.length,
+    returnedCount: teams.length,
+    teams,
+    sources: [
+      {
+        label: `${eventSummary.eventName || eventCode} rankings`,
+        url: `${FIRST_BASE_URL}/${eventCode}/rankings`,
+      },
+      {
+        label: `${eventSummary.eventName || eventCode} rankings API`,
+        url: `${FIRST_REGIONAL_API.baseUrl}/${FIRST_REGIONAL_API.version}/${CURRENT_SEASON}/rankings/${eventCode}`,
+      },
+      {
+        label: `${CURRENT_SEASON} Statbotics EPA rankings`,
+        url: "https://www.statbotics.io/teams",
+      },
+    ],
+  };
+}
+
 async function getMinnesotaTeamDirectory2026(options = {}) {
   const onProgress = options.onProgress || (() => {});
   const cacheKey = "minnesota-team-directory-2026";
@@ -4146,6 +4654,93 @@ function buildStateScopeLabel(stateCode) {
   return `${stateCode} teams`;
 }
 
+function normalizeSpecialEventAlias(question) {
+  const normalized = normalizeSearchText(question);
+  if (!normalized) {
+    return null;
+  }
+
+  if (
+    normalized.includes("mnst") ||
+    normalized.includes("minnesota state high school league championship") ||
+    normalized.includes("minnesota state championship")
+  ) {
+    return SPECIAL_EVENT_ALIASES.find((event) => event.code === "MNST") || null;
+  }
+
+  return null;
+}
+
+function extractTeamQueryFromMatchupQuestion(question) {
+  const normalized = normalizeText(question);
+  const patterns = [
+    /\bpartners?(?:\s+and|\/)?\s*opponents?\s+of\s+(.+?)\s+in\b/i,
+    /\bepa of all\s+(.+?)'?s\s+partners?\s+and\s+opponents?\b/i,
+    /\bshow\s+(.+?)'?s\s+partners?\s+and\s+opponents?\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match) {
+      return cleanTeamQuery(match[1]).replace(/^epa of\s+/i, "").trim();
+    }
+  }
+
+  const numberedMatch =
+    normalized.match(/\bteam\s+(\d{1,5})\b/i) ||
+    normalized.match(/\bof\s+(\d{1,5})(?:'s)?\b/i) ||
+    normalized.match(/\b(\d{1,5})'s\b/);
+  if (numberedMatch) {
+    return numberedMatch[1];
+  }
+
+  const numericCandidates = normalized.match(/\b\d{1,5}\b/g) || [];
+  const filteredCandidates = numericCandidates.filter((value) => value !== String(CURRENT_SEASON));
+  return filteredCandidates[0] || "";
+}
+
+function extractTeamEventMatchupEpaRequest(question) {
+  const normalized = String(question || "").toLowerCase();
+  const event = normalizeSpecialEventAlias(question);
+  const mentionsEpa = /\bepa\b/.test(normalized);
+  const mentionsMatchups =
+    /\bpartners?\b/.test(normalized) ||
+    /\bopponents?\b/.test(normalized);
+  const asksForMatchByMatch = /\bmatch by match\b/.test(normalized);
+
+  if (!event || !mentionsMatchups || (!mentionsEpa && !asksForMatchByMatch)) {
+    return null;
+  }
+
+  const teamQuery = extractTeamQueryFromMatchupQuestion(question);
+  if (!teamQuery) {
+    return null;
+  }
+
+  return {
+    teamQuery,
+    eventCode: event.code,
+    eventName: event.name,
+  };
+}
+
+function extractEventRankingsWithEpaRequest(question) {
+  const normalized = String(question || "").toLowerCase();
+  const event = normalizeSpecialEventAlias(question);
+  const mentionsRankings = /\brankings?\b|\bcurrent rank\b|\bcurrent standings\b/.test(normalized);
+  const mentionsEpa = /\bepa\b/.test(normalized);
+  const asksForTable = /\btable\b|\bshow\b|\blist\b|\binclude\b/.test(normalized);
+
+  if (!event || !mentionsRankings || !mentionsEpa || !asksForTable) {
+    return null;
+  }
+
+  return {
+    eventCode: event.code,
+    eventName: event.name,
+  };
+}
+
 function normalizeChampionshipDivision(value) {
   const normalized = normalizeSearchText(value);
   if (!normalized) {
@@ -4563,6 +5158,48 @@ function buildChampionshipDivisionStandingsAnswer(result) {
     .join(" ");
 }
 
+function buildTeamEventMatchupEpaAnswer(result) {
+  const preview = result.matches
+    .slice(0, Math.min(3, result.matches.length))
+    .map((match) => {
+      const partners = match.partnerTeams
+        .map((team) => `${team.teamNumber} (${formatAnswerStat(team.epa)})`)
+        .join(", ");
+      const opponents = match.opponentTeams
+        .map((team) => `${team.teamNumber} (${formatAnswerStat(team.epa)})`)
+        .join(", ");
+      return `${match.matchLabel}: partners ${partners}; opponents ${opponents}`;
+    })
+    .join(" | ");
+
+  return [
+    `Showing ${result.totalMatchCount} ${result.eventName} matches for ${result.teamName} (Team ${result.teamNumber}), with partners and opponents enriched by ${result.season} EPA.`,
+    result.eventStatusMessage || "",
+    preview,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function buildEventRankingsWithEpaAnswer(result) {
+  const preview = result.teams
+    .slice(0, Math.min(5, result.teams.length))
+    .map(
+      (team) =>
+        `#${team.rank} ${team.teamNumber} ${team.teamName} (RS ${formatAnswerStat(team.rankingScore)}, EPA ${formatAnswerStat(team.epa)})`,
+    )
+    .join("; ");
+
+  return [
+    `${result.eventName} current rankings with ${result.season} EPA included.`,
+    result.eventStatusMessage || "",
+    preview ? `Top teams: ${preview}.` : "",
+    `Returned ${result.returnedCount} ranked teams.`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function buildAttachedTeamEpaRankingsAnswer(result) {
   const preview = result.teams
     .slice(0, Math.min(5, result.teams.length))
@@ -4615,6 +5252,8 @@ module.exports = {
   buildChampionshipDivisionEpaAnswer,
   buildChampionshipDivisionStandingsAnswer,
   buildEpaRankingsAnswer,
+  buildEventRankingsWithEpaAnswer,
+  buildTeamEventMatchupEpaAnswer,
   buildTeamChampionshipAnswer,
   buildTeamRegionalPointsAnswer,
   buildTeamLookupAnswer,
@@ -4626,6 +5265,9 @@ module.exports = {
   extractChampionshipDivisionEpaRequest,
   extractChampionshipDivisionStandingsRequest,
   extractChampionshipStandingsRowsFromHtml,
+  extractEventRankingsWithEpaRequest,
+  extractTeamEventMatchRows,
+  extractTeamEventMatchupEpaRequest,
   extractTeamQueriesFromAttachmentText,
   extractMetricQuery,
   extractEpaRankingRequest,
